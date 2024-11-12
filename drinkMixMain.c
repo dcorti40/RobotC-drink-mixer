@@ -1,4 +1,5 @@
 
+
 typedef struct {
 	byte curSpot;
 	int time;
@@ -27,7 +28,7 @@ void clearScreen()
 
 bool lightDetected(short threshold)
 {
-	if(SensorValue[S3] > threshold)
+	if(SensorValue[S1] > threshold)
 		return true;
 	return false;
 }
@@ -39,7 +40,7 @@ task liquid()//Lucas
 	taskLiquid = false;
 	motor[motorA] = 10;
 	wait1Msec(9000);
-	motor[motorA] = 10;
+	motor[motorA] = 0;
 	taskLiquid = true;
 
 }
@@ -48,8 +49,9 @@ task powder()//Henon
 {
 
 	taskPowder = false;
-	wait1Msec(5000);
 	setLEDColor(ledRedFlash);
+	wait1Msec(5000);
+	setLEDColor(ledOff);
 
 	taskPowder = true;
 
@@ -60,13 +62,13 @@ task stir()//Devin
 	taskStir = false;
 	nMotorEncoder[motorC] = 0;
 	motor[motorC] = -50;
-	while(abs(nMotorEncoder[motorC])<(360*18))
+	while(abs(nMotorEncoder[motorC])<(360*17.5))
 	{}
 	motor[motorC] = 0;
 	wait1Msec(100);
 	motor[motorC] = 50;
 	nMotorEncoder[motorC] = 0;
-	while(abs(nMotorEncoder[motorC])<(360*18))
+	while(abs(nMotorEncoder[motorC])<(360*17.6))
 	{}
 	motor[motorC] = 0;
 	taskStir = true;
@@ -75,17 +77,13 @@ task fCup()//polls for whether the cup has been removed or not
 {
 
 	finishedCupRemoved = false;
-	while(!finishedCupRemoved)
-	{
-		displayBigTextLine(5, "Please remove your cup");
-		if(lightDetected(lightThreshold))
-		{
-			finishedCupRemoved = true;
-		}
-
-	}
-
-
+	clearScreen();
+	displayBigTextLine(2, "Please remove");
+	displayBigTextLine(4, "your cup");
+	while(lightDetected(lightThreshold))
+	{}
+	clearScreen();
+	finishedCupRemoved = true;
 }
 
 
@@ -104,7 +102,7 @@ void rotate()//Devin
 {
 	nMotorEncoder[motorD] = 0;
 	motor[motorD] = -30;
-	while((abs(nMotorEncoder[motorD])<(90*5-20)))
+	while((abs(nMotorEncoder[motorD])<(90*5+5)))
 	{
 		motor[motorD] = -30+ (30*(abs(nMotorEncoder[motorD])/(90*5)));
 	}
@@ -123,6 +121,7 @@ bool receivePowderInput()
 	bool amount = false;
 	bool amountChosen = false;
 	bool confirm = false;
+	clearScreen();
 	displayTextLine(5, "Enter the amount of powder");
 	displayTextLine(7, "Press up for strong");
 	displayTextLine(8, "Press down for weak");
@@ -130,12 +129,14 @@ bool receivePowderInput()
 	{
 		if(getButtonPress(buttonUp))
 		{
+			clearScreen();
 			displayTextLine(5, "Press Enter to continue");
 			amount = true;
 			amountChosen = true;
 		}
 		else if(getButtonPress(buttonDown))
 		{
+			clearScreen();
 			displayTextLine(5, "Press Enter to continue");
 			amount = false;
 			amountChosen = true;
@@ -186,11 +187,8 @@ void initializeTasks()
 			startTask(stir);
 		else if(cups[i].curSpot == 4)//cup is at loading station
 		{
-			finishedCupRemoved = false;
-			cups[i].curSpot = -1;
 			cupCount++;
 			receiptPrint(cupCount,cups[i].time);
-
 			startTask(fCup);//constantly polls for whether the cup has been removed, then makes fCup true
 			cups[i].curSpot = -1;//reset the curSpot attribute of that cup object
 		}
@@ -253,12 +251,11 @@ void initialCupSequence()
 {
 	configureAllSensors();
 	populateCups();
-	displayBigTextLine(2,"Please put your\n cup in the\n receptacle");
+	displayBigTextLine(2,"Please put your");
 	displayBigTextLine(4,"cup in the");
 	displayBigTextLine(6,"receptacle");
 	while(!lightDetected(lightThreshold)){}//wait for cup to be placed
 	clearScreen();
-	initializeCup(count);//initialize the cup we have detected
 	displayBigTextLine(2,"Press the ");
 	displayBigTextLine(4,"center button");
 	displayBigTextLine(6,"to begin! :)");
@@ -278,19 +275,16 @@ task main()
 
 
 	clearTimer(T1);
-
-	int curTime = time100[T1];
-	while(!lightDetected(lightThreshold) && time100[T1] < curTime + 300)
-	{
-
-		while(cupsExist()){//TODO add watchdog timer to kill program if tasks take too long to execute
+	
+	float curTime = time1[T1]*100;
+	do{//TODO add watchdog timer to kill program if tasks take too long to execute
 			clearScreen();
-			count++;
 			initializeTasks();
+			wait1Msec(1000);
 			curTime = time100[T1];
-			while(!((((taskLiquid && taskPowder) && taskStir) && finishedCupRemoved) && (time100[T1] < curTime + 300)))//while the tasks are false and the watch dog hasn't times out
+			while(!taskLiquid || !taskPowder || !taskStir || !finishedCupRemoved)//while the tasks are false and the watch dog hasn't times out
 			{}
-			if(time100[T1] < curTime + 300)
+/*			if(time100[T1] < curTime + 300 && count!=0)
 			{
 				displayBigTextLine(0,"Unexpected");
 				displayBigTextLine(2,"Failure!");
@@ -301,25 +295,21 @@ task main()
 				wait1Msec(5000);
 				stopAllTasks();
 			}
+	*/
 			displayBigTextLine(6,"enter %d", count);//testing line
-			rotate();
-
+			wait1Msec(500);
 			if(lightDetected(lightThreshold))//if we detect reflected light
 			{
 				initializeCup(count);
 			}
-
+			count++;
 			stopTask(liquid);
 			stopTask(powder);
 			stopTask(fCup);
 			stopTask(stir);
+			rotate();
 		}
-		curTime = time1[T1];
-		displayBigTextLine(0,"Please add cup");
-		displayBigTextLine(4,"Operation will cease");
-		displayBigTextLine(6,"in %d seconds(s)", 30-curTime%10);
+		while(cupsExist());
 
-
-	}
 	stopAllTasks();
 }
